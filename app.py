@@ -1,69 +1,91 @@
 import streamlit as st
 import pandas as pd
 import geopandas as gpd
-import plotly.express as px
+
+# Page setup
+st.set_page_config(page_title="Haiti Data Dashboard", layout="wide")
+st.title("Haiti Operations Dashboard - Test Version")
 
 # Load data
 @st.cache_data
 def load_data():
-    df = pd.read_csv("https://raw.githubusercontent.com/cami11220/haiti_app/main/data_op_pres.csv", parse_dates=["date"])
-    gdf = gpd.read_file("https://raw.githubusercontent.com/cami11220/haiti_app/main/communes_haiti.shp")
-    gdf = gdf.merge(df, how='left', left_on='ADM2_PCODE', right_on='adm2code')
-    return df, gdf
+    try:
+        st.write("Cargando datos...")
+        df = pd.read_csv("https://raw.githubusercontent.com/cami11220/haiti_app/main/data_op_pres.csv", parse_dates=["date"])
+        st.write(f"✅ DataFrame cargado: {df.shape[0]} filas, {df.shape[1]} columnas")
+        
+        gdf = gpd.read_file("https://raw.githubusercontent.com/cami11220/haiti_app/main/communes_haiti.shp")
+        st.write(f"✅ GeoDataFrame cargado: {gdf.shape[0]} filas, {gdf.shape[1]} columnas")
+        
+        gdf = gdf.merge(df, how='left', left_on='ADM2_PCODE', right_on='adm2code')
+        st.write(f"✅ Merge completado: {gdf.shape[0]} filas, {gdf.shape[1]} columnas")
+        
+        return df, gdf
+    except Exception as e:
+        st.error(f"Error cargando datos: {e}")
+        return None, None
 
+# Load data
 df, gdf = load_data()
 
-# Page setup
-st.set_page_config(page_title="Haiti Data Dashboard", layout="wide")
-st.title("Haiti Operations Dashboard")
+if df is not None and gdf is not None:
+    st.header("📊 Datos Cargados Exitosamente")
+    
+    # Mostrar info básica
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📄 DataFrame (CSV):")
+        st.write(f"**Shape:** {df.shape}")
+        st.write("**Primeras 5 filas:**")
+        st.dataframe(df.head())
+        
+        st.write("**Columnas:**")
+        st.write(df.columns.tolist())
+    
+    with col2:
+        st.subheader("🗺️ GeoDataFrame (Shapefile + merge):")
+        st.write(f"**Shape:** {gdf.shape}")
+        st.write("**Primeras 5 filas:**")
+        st.dataframe(gdf.head())
+        
+        st.write("**Columnas:**")
+        st.write(gdf.columns.tolist())
+    
+    # Información adicional
+    st.header("📈 Información Adicional")
+    
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        st.subheader("Sectores únicos:")
+        if 'Secteur' in df.columns:
+            sectores = df['Secteur'].dropna().unique()
+            st.write(f"Total: {len(sectores)}")
+            st.write(sectores.tolist())
+        else:
+            st.write("Columna 'Secteur' no encontrada")
+    
+    with col4:
+        st.subheader("Departamentos únicos:")
+        if 'adm1code' in df.columns:
+            deptos = df['adm1code'].dropna().unique()
+            st.write(f"Total: {len(deptos)}")
+            st.write(deptos.tolist())
+        else:
+            st.write("Columna 'adm1code' no encontrada")
+    
+    # Test de geometrías
+    st.header("🔍 Test de Geometrías")
+    if 'geometry' in gdf.columns:
+        st.write(f"**Geometrías válidas:** {gdf.geometry.notna().sum()}")
+        st.write(f"**Geometrías nulas:** {gdf.geometry.isna().sum()}")
+        st.write(f"**Tipo de geometría:** {gdf.geometry.geom_type.iloc[0] if not gdf.empty else 'N/A'}")
+    else:
+        st.write("Columna 'geometry' no encontrada")
 
-# Sidebar
-page = st.sidebar.selectbox("Choose a page", ["Basic Statistics", "Map View (coming soon)"])
-
-if page == "Basic Statistics":
-    st.header("Basic Statistics Viewer")
-
-    # First chart - Sector and Time filter
-    st.subheader("1. Operations by Department (Filtered by Sector and Date)")
-
-    sector = st.selectbox("Select a sector", options=sorted(df['Secteur'].dropna().unique()))
-    date_range_1 = st.date_input("Select date range (optional)", [], key="date1")
-
-    df_filtered = df[df['Secteur'] == sector]
-    if date_range_1 and len(date_range_1) == 2:
-        df_filtered = df_filtered[(df_filtered['date'] >= pd.to_datetime(date_range_1[0])) &
-                                  (df_filtered['date'] <= pd.to_datetime(date_range_1[1]))]
-
-    chart1 = df_filtered.groupby('adm1code').size().reset_index(name='count')
-    fig1 = px.bar(chart1, x='adm1code', y='count', labels={'adm1code': 'Department', 'count': 'Number of Records'})
-    st.plotly_chart(fig1, use_container_width=True)
-
-    # Second chart - Type of Organization and Time filter
-    st.subheader("2. Operations by Department (Filtered by Type of Organization and Date)")
-
-    org_type = st.selectbox("Select a type of organization", options=sorted(df['Typedorganisation'].dropna().unique()))
-    date_range_2 = st.date_input("Select date range (optional)", [], key="date2")
-
-    df_filtered_org = df[df['Typedorganisation'] == org_type]
-    if date_range_2 and len(date_range_2) == 2:
-        df_filtered_org = df_filtered_org[(df_filtered_org['date'] >= pd.to_datetime(date_range_2[0])) &
-                                          (df_filtered_org['date'] <= pd.to_datetime(date_range_2[1]))]
-
-    chart2 = df_filtered_org.groupby('adm1code').size().reset_index(name='count')
-    fig2 = px.bar(chart2, x='adm1code', y='count', labels={'adm1code': 'Department', 'count': 'Number of Records'})
-    st.plotly_chart(fig2, use_container_width=True)
-
-    # Third chart - Department and Time filter
-    st.subheader("3. Sector Breakdown in Selected Department")
-
-    dept = st.selectbox("Select a department", options=sorted(df['adm1code'].dropna().unique()))
-    date_range_3 = st.date_input("Select date range", [], key="date3")
-
-    df_filtered_dept = df[df['adm1code'] == dept]
-    if date_range_3 and len(date_range_3) == 2:
-        df_filtered_dept = df_filtered_dept[(df_filtered_dept['date'] >= pd.to_datetime(date_range_3[0])) &
-                                            (df_filtered_dept['date'] <= pd.to_datetime(date_range_3[1]))]
-
-    chart3 = df_filtered_dept.groupby('Secteur').size().reset_index(name='count')
-    fig3 = px.bar(chart3, x='Secteur', y='count', labels={'Secteur': 'Sector', 'count': 'Number of Records'})
-    st.plotly_chart(fig3, use_container_width=True)
+else:
+    st.error("❌ No se pudieron cargar los datos. Revisa las URLs o la conexión.")
+    st.write("Verifica que estos enlaces funcionen:")
+    st.write("- https://raw.githubusercontent.com/cami11220/haiti_app/main/data_op_pres.csv")
+    st.write("- https://raw.githubusercontent.com/cami11220/haiti_app/main/communes_haiti.shp")
